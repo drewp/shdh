@@ -1,0 +1,96 @@
+#!/usr/bin/python
+
+"""
+Given an email address, search for RDF documents that use FOAF to
+describe the user.
+
+Try: getNameFromEmail "drewp@bigasterisk.com"
+
+Todo:
+- use twisted for simultaneous downloads, and repeat the query
+  constantly as the downloads come in. Maybe we don't have to wait for
+  all the fetches to finish?
+"""
+
+import sys, urllib2, hashlib, simplejson, logging
+from rdflib.Graph import Graph
+from rdflib import URIRef, Variable, Namespace, Literal
+
+FOAF = Namespace('http://xmlns.com/foaf/0.1/')
+
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger()
+
+def sindiceHits(term):
+    """
+    Returns a list of sindice json result entries like this:
+
+    [{u'content': u'36 triples in 4725 bytes',
+      u'updated': u'2008/11/02',
+      u'formats': [u'RDF'],
+      u'link': u'http://revyu.com/people/drewp/about/rdf',
+      u'title': [u'http://revyu.com/people/drewp/about/rdf']},
+     {u'content': u'51 triples in 5793 bytes',
+      u'updated': u'2008/11/13',
+      ...
+
+    """
+    req = urllib2.Request("http://api.sindice.com/v2/search?qt=term&q=%s" %
+                          urllib2.quote(term),
+                          headers={'Accept' : 'application/json'})
+    log.info("Querying sindice..")
+    res = urllib2.urlopen(req)
+    parsed = simplejson.loads(res.read())
+    return parsed['entries']
+
+def gatherRdf(links):
+    """
+    Return a new Graph with all the contents of the RDF documents at
+    the given links.
+    """
+    graph = Graph()
+    for link in links:
+        log.info("Fetching %s" % link)
+        graph.parse(URIRef(link))
+    return graph
+
+def mbox_sha1(emailAddress):
+    """
+    The Literal for an foaf:mbox_sha1 property.
+    See http://xmlns.com/foaf/spec/#term_mbox_sha1sum for more.
+    """
+    assert not emailAddress.startswith("mailto:")
+    return Literal(hashlib.sha1("mailto:" + emailAddress).hexdigest())
+
+def main():
+    email = sys.argv[1]
+
+    emailSha = mbox_sha1(email)
+
+    graph = gatherRdf(entry['link'] for entry in sindiceHits(emailSha))
+    log.info("Graph has %s statements" % len(graph))
+
+    possibleNames = set()
+    for person, name in graph.query("""
+              SELECT ?person ?name WHERE {
+                ?person a foaf:Person;
+                        foaf:mbox_sha1sum ?sha;
+                        foaf:name ?name .
+              }""",
+                           initNs=dict(foaf=FOAF),
+                           initBindings={Variable('?sha') : Literal(emailSha)}):
+        possibleNames.add(name)
+
+    if not possibleNames:
+        log.error("Found no foaf:Person nodes with a hash for %r" % email)
+        raise SystemExit(1)
+
+    if len(possibleNames) == 1:
+        print possibleNames.pop()
+    else:
+        print "Multiple matches for %r" % email
+        for name in possibleNames:
+            print name
+
+if __name__ == '__main__':
+    main()
