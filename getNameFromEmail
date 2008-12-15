@@ -4,12 +4,42 @@
 Given an email address, search for RDF documents that use FOAF to
 describe the user.
 
-Try: getNameFromEmail "drewp@bigasterisk.com"
+Example:
+
+    % ./getNameFromEmail "drewp@bigasterisk.com"
+    INFO:root:Querying sindice..
+    INFO:root:Fetching http://revyu.com/people/drewp/about/rdf
+    INFO:root:Fetching http://bigasterisk.com/foaf.rdf
+    INFO:root:Fetching http://identi.ca/drewp/foaf
+    INFO:root:Graph has 375 statements
+    Drew Perttula
+
+How it works:
+
+    We assume the user is listed on a FOAF document that has been indexed
+    by http://sindice.com. Their node needs only these 3 edges:
+
+    ?person a foaf:Person .
+    ?person foaf:name "Full Name" .
+    ?person foaf:mbox_sha1 "8987a9a8df8g79877879823" .
+
+    We search by the mbox_sha1 and print the foaf:name on stdout.
+
+    If you want to make a FOAF page for yourself, try
+    http://www.ldodds.com/foaf/foaf-a-matic
+
+    An event like SHDH could also reasonably post a single document with
+    just emails/names/interests of everyone who came to that event.
+
 
 Todo:
+
 - use twisted for simultaneous downloads, and repeat the query
   constantly as the downloads come in. Maybe we don't have to wait for
   all the fetches to finish?
+
+- plenty more caching, although a regular HTTP cache might help (if
+  people's FOAF docs are set to be cachable)
 """
 
 import sys, urllib2, hashlib, simplejson, logging
